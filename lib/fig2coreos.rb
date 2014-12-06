@@ -30,18 +30,29 @@ class Fig2CoreOS
   def create_service_files
   	@fig.each do |service_name, service|
       image = service["image"]
+      
+      command = if service["command"]
+        "#{service["command"]}"
+      else
+        ""
+      end  
       ports = (service["ports"] || []).map{|port| "-p #{port}"}
       volumes = (service["volumes"] || []).map{|volume| "-v #{volume}"}
-      links = (service["links"] || []).map{|link| "--link #{link}_1:#{link}_1"}
+      links = (service["links"] || []).map{|link| "--link #{link}_1:#{link}"}
       envs = (service["environment"] || []).map do |env_name, env_value|
         "-e \"#{env_name}=#{env_value}\""
       end
-
+      machine= if service["machine"]
+        "X-ConditionMachineOf=#{service["machine"]}.1.service"
+      else
+        ""
+      end  
       after = if service["links"]
         "#{service["links"].last}.1"
       else
         "docker"
       end
+      
 
       if @vagrant
         base_path = File.join(@output_dir, "media", "state", "units")
@@ -59,14 +70,17 @@ Requires=#{after}.service
 [Service]
 Restart=always
 RestartSec=10s
-ExecStartPre=/usr/bin/docker ps -a -q | xargs docker rm
-ExecStart=/usr/bin/docker run -rm -name #{service_name}_1 #{volumes.join(" ")} #{links.join(" ")} #{envs.join(" ")} #{ports.join(" ")} #{image}
-ExecStartPost=/usr/bin/docker ps -a -q | xargs docker rm
-ExecStop=/usr/bin/docker kill #{service_name}_1
-ExecStopPost=/usr/bin/docker ps -a -q | xargs docker rm
+ExecStartPre=-/usr/bin/docker kill #{service_name}_1
+ExecStartPre=-/usr/bin/docker rm #{service_name}_1
+ExecStart=/usr/bin/docker run -rm -name #{service_name}_1 #{volumes.join(" ")} #{links.join(" ")} #{envs.join(" ")} #{ports.join(" ")} #{image} #{command}
+ExecStop=/usr/bin/docker stop #{service_name}_1
+
 
 [Install]
 WantedBy=local.target
+
+[X-Fleet]
+#{machine}
 eof
   		end
 
